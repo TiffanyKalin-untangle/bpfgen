@@ -66,3 +66,6 @@ then
 fi
 
 #Remove XDP programs
+IP=`ip a | grep xdp | awk '{split($0,a,":"); print a[2]}'`
+echo "${IP}"
+ip link set dev ${IP} xdp off
