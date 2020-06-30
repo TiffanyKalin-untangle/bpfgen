@@ -44,12 +44,6 @@ enum imr_reg_num {
 enum imr_alu_op {
 	IMR_ALU_OP_EQ = 0,
 	IMR_ALU_OP_NE,
-	IMR_ALU_OP_LT,
-	IMR_ALU_OP_LTE,
-	IMR_ALU_OP_GT,
-	IMR_ALU_OP_GTE,
-	IMR_ALU_OP_AND,
-	IMR_ALU_OP_LSHIFT,
 };
 
 /* imr verdicts */
@@ -138,7 +132,7 @@ struct imr_state {
 
 //Function declaration
 struct imr_state *imr_state_alloc(void);
-void imr_state_print(FILE *fp, struct imr_state *s);
+int imr_state_print(FILE *fp, struct imr_state *s);
 void imr_state_free(struct imr_state *s);
 void imr_object_free(struct imr_object *o);
 
@@ -150,10 +144,4 @@ struct imr_object *imr_object_alloc_imm64(uint64_t value);
 struct imr_object *imr_object_alloc_imm32(uint32_t value);
 int imr_state_add_obj(struct imr_state *s, struct imr_object *o);
 
-//Register operations 
-unsigned int imr_regs_needed(unsigned int len);
-int imr_register_get(const struct imr_state *s, uint32_t len);
-int bpf_reg_width(unsigned int len);
-int imr_register_alloc(struct imr_state *s, uint32_t len);
-void imr_register_release(struct imr_state *s, uint32_t len);
 #endif

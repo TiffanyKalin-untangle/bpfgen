@@ -59,11 +59,10 @@ static int imr_jit_obj_verdict(struct bpf_prog *bprog,
 	@return Return of code of jitting object
 */
 static int imr_jit_obj_immediate(struct bpf_prog *bprog,
-								 struct imr_state *s,
 				                 const struct imr_object *o)
 {
 	//Get a register to use 
-	int bpf_reg = imr_register_get(s, o->len);
+	int bpf_reg = bpf_register_get(bprog, o->len);
 
 	//Switch on if 32 or 64 bit immediate, then JIT
 	switch (o->len) {
@@ -128,7 +127,6 @@ static void imr_fixup_jumps(struct bpf_prog *bprog, unsigned int poc_start)
 	@return Return code of jitting payload
 */
 static int imr_jit_obj_payload(struct bpf_prog *bprog,
-			       const struct imr_state *state,
 			       const struct imr_object *o)
 {
 	int ret = 0;
@@ -160,7 +158,6 @@ static int imr_jit_obj_payload(struct bpf_prog *bprog,
 	@return Return code of jitting alu
 */
 static int imr_jit_obj_alu(struct bpf_prog *bprog,
-				  struct imr_state *state,
 				  const struct imr_object *o)
 {
 	//Variable declaration
@@ -181,12 +178,12 @@ static int imr_jit_obj_alu(struct bpf_prog *bprog,
 	}
 
 	//Jit the left side 
-	ret = imr_jit_object(bprog, state, o->alu.left);
+	ret = imr_jit_object(bprog, o->alu.left);
 	if (ret < 0) 
 		return ret;
 
 	//Get the regsiter for the left side 
-	regl = imr_register_get(state, o->len);
+	regl = bpf_register_get(bprog, o->len);
 	if (regl < 0) 
 		return -EINVAL;
 
@@ -266,7 +263,7 @@ static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_state *state) {
 			break;
 	}
 
-	//Return return code of jitting verdict
+	//Return return code of jitting beginning of rule
 	return ret;
 }
 
@@ -299,7 +296,6 @@ static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int i)
 	if (ret != 0) {
 		fprintf(stderr, "Failed to JIT rule begin");
 		return ret;
-
 	}
 
 	//Start at the objects that are part of the rule 
@@ -309,7 +305,7 @@ static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int i)
 	//Loop through objects and jit each object in the rule 
 	for (i = start; start < end; i++) {
 		//Jit object 
-		ret = imr_jit_object(bprog, state, state->objects[i]);
+		ret = imr_jit_object(bprog, state->objects[i]);
 
 		//Jitting failed
 		if (ret < 0) {
@@ -371,7 +367,6 @@ static int imr_jit_prologue(struct bpf_prog *bprog, struct imr_state *state)
 	@param o - imr_object to jit 
 */
 int imr_jit_object(struct bpf_prog *bprog,
-			  struct imr_state *s,
 			  const struct imr_object *o)
 {
 	//Switch on imr_object type and call the appropriate function
@@ -379,11 +374,11 @@ int imr_jit_object(struct bpf_prog *bprog,
 	case IMR_OBJ_TYPE_VERDICT:
 		return imr_jit_obj_verdict(bprog, o);
 	case IMR_OBJ_TYPE_PAYLOAD:
-		return imr_jit_obj_payload(bprog, s, o);
+		return imr_jit_obj_payload(bprog, o);
 	case IMR_OBJ_TYPE_IMMEDIATE:
-		return imr_jit_obj_immediate(bprog, s, o);
+		return imr_jit_obj_immediate(bprog, o);
 	case IMR_OBJ_TYPE_ALU:
-		return imr_jit_obj_alu(bprog, s, o);
+		return imr_jit_obj_alu(bprog, o);
 	}
 
 	return -EINVAL;
@@ -437,13 +432,20 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int 
 	//If running the bootstrap, fill_imr state with the test_to_run
 	if (run_bootstrap) {
 		int ret = fill_imr(state, test_to_run);
-		if (ret != 0)
+		if (ret < 0)
 			return NULL;
-	}
+	} //else { //If not running bootstrap, fill the ruleset properly
+
+	//}
 
 	//Print out function
-	if (!run_bootstrap)
-		imr_state_print(stdout, state);
+	if (!run_bootstrap) {
+		int ret = imr_state_print(stdout, state);
+		if (ret < 0) {
+			fprintf(stderr, "Print failed\n");
+			return NULL;
+		}
+	}
 
 	return state;
 }
@@ -472,9 +474,6 @@ int imr_do_bpf(struct imr_state *s)
 
 	if (s->num_objects > 0)
 	{
-		//Don't use first two registers 
-		s->regcount = 2;
-
 		//JIT each object in imr_state 
 		do {
 			//Jit the object based on index 

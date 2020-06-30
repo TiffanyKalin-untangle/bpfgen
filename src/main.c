@@ -36,7 +36,7 @@ static int sdwan2bpf(int run_bootstrap, int test_to_run)
 	//Read in ruleset from the file descriptor 
 	state = imr_ruleset_read(bpf_settings, run_bootstrap, test_to_run);
 	if (state == NULL) {
-		perror("ruleset_read: ");
+		fprintf(stderr, "Ruleset read failed\n");
 		exit(EXIT_FAILURE);
 	}
 
