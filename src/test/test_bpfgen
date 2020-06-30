@@ -53,9 +53,9 @@ do
 	#If return code is 0, then test passed
 	if [ $? -eq 0 ] 
 	then
-		echo "test $i: ${GREEN}pass${NC}"
+		echo -e "test $i: ${GREEN}pass${NC}"
 	else
-		echo "test $i: ${RED}fail${NC}"
+		echo -e "test $i: ${RED}fail${NC}"
 	fi
 done
 
@@ -67,5 +67,7 @@ fi
 
 #Remove XDP programs
 IP=`ip a | grep xdp | awk '{split($0,a,":"); print a[2]}'`
-echo "${IP}"
-ip link set dev ${IP} xdp off
+if [ -n "${IP}" ]
+then 
+	ip link set dev ${IP} xdp off
+fi

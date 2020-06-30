@@ -22,6 +22,7 @@ enum imr_obj_type {
 	IMR_OBJ_TYPE_PAYLOAD,
 	IMR_OBJ_TYPE_ALU,
 	IMR_OBJ_TYPE_META,
+	IMR_OBJ_TYPE_BEGIN,
 };
 
 /* imr registers to allow for ease in switching to bpf registers */
@@ -61,15 +62,18 @@ enum imr_payload_base {
 };
 
 enum link_type {
-	LINK_ETHERNET = 0,
+	NO_LINK = 0,
+	LINK_ETHERNET,
 };
 
 enum network_type {
-	NETWORK_IP4 = 0,
+	NO_NETWORK = 0,
+	NETWORK_IP4,
 };
 
 enum transport_type {
-	TRANSPORT_TCP = 0,
+	NO_TRANSPORT = 0,
+	TRANSPORT_TCP,
 };
 
 /* imr meta keys */
@@ -113,6 +117,10 @@ struct imr_object {
 			struct imr_object *right;
 			enum imr_alu_op op:8;
 		} alu;
+		struct {
+			enum network_type       network_layer;  //only IP for now 
+			enum transport_type     transport_layer; //only tcp for now 
+		} beginning;
 	};
 };
 
@@ -122,8 +130,6 @@ struct imr_state {
 	uint16_t	            num_objects;     //Number of objects 
 	uint8_t		            regcount;        //Register count 
 	enum link_type          link_layer;      //only ethernet for now 
-	enum network_type       network_layer;  //only IP for now 
-	enum transport_type     transport_layer; //only tcp for now 
 
 	struct imr_object *registers[IMR_REG_COUNT];
 
@@ -132,6 +138,7 @@ struct imr_state {
 
 //Function declaration
 struct imr_state *imr_state_alloc(void);
+const char *type_to_str(enum imr_obj_type t);
 int imr_state_print(FILE *fp, struct imr_state *s);
 void imr_state_free(struct imr_state *s);
 void imr_object_free(struct imr_object *o);
@@ -142,6 +149,7 @@ struct imr_object *imr_object_alloc_payload(enum imr_payload_base b);
 struct imr_object *imr_object_alloc_verdict(enum imr_verdict v);
 struct imr_object *imr_object_alloc_imm64(uint64_t value);
 struct imr_object *imr_object_alloc_imm32(uint32_t value);
+struct imr_object *imr_object_alloc_beginning(enum network_type n, enum transport_type t);
 int imr_state_add_obj(struct imr_state *s, struct imr_object *o);
 
 #endif

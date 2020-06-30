@@ -1,24 +1,6 @@
 #include "imr.h"
 
 /*
-	Convert imr_obj_type to string for printing purposes 
-	@param t - imr_obj_type to convert 
-	@return String representation of imr_obj_type parameter, t 
-*/
-static const char *type_to_str(enum imr_obj_type t)
-{
-	switch (t) {
-	case IMR_OBJ_TYPE_VERDICT: return "VERDICT: ";
-	case IMR_OBJ_TYPE_IMMEDIATE: return "IMM: ";
-	case IMR_OBJ_TYPE_PAYLOAD: return "PAYLOAD: ";
-	case IMR_OBJ_TYPE_ALU: return "ALU: ";
-	case IMR_OBJ_TYPE_META: return "META: ";
-	}
-
-	return "unknown";
-}
-
-/*
 	Convert imr_alu_op to string for printing purposes 
 	@param op - imr_alu_op to convert 
 	@return String representation of imr_alu_op parameter, op
@@ -79,6 +61,26 @@ static const char *payload_base_to_str(enum imr_payload_base p)
 	switch(p) {
 		case IMR_DEST_PORT: return "destination port";
 		case IMR_SRC_PORT:  return "source port";
+	}
+
+	return "invalid";
+}
+
+static const char *network_to_str(enum network_type n) 
+{
+	switch(n) {
+		case NO_NETWORK: return "NO NETWORK";
+		case NETWORK_IP4: return "IPv4";
+	}
+
+	return "invalid";
+}
+
+static const char *transport_to_str(enum transport_type t) 
+{
+	switch(t) {
+		case NO_TRANSPORT: return "NO TRANSPORT";
+		case TRANSPORT_TCP: return "TCP";
 	}
 
 	return "invalid";
@@ -209,6 +211,19 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 			break;
 		total += ret;
 		break;
+	case IMR_OBJ_TYPE_BEGIN:
+		ret = fprintf(fp, "\n\tNETWORK: %s\n", network_to_str(o->beginning.network_layer));
+		//Don't add to total if print failed, otherwise add to total
+		if (ret < 0)
+			break;
+		total += ret;
+
+		ret = fprintf(fp, "\tTRANSPORT: %s\n", transport_to_str(o->beginning.transport_layer));
+		//Don't add to total if print failed, otherwise add to total
+		if (ret < 0)
+			break;
+		total += ret;
+		break;
 	default:
 		//Failure for missing print support
 		perror("Missing print support");
@@ -217,6 +232,25 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 	}
 
 	return total;
+}
+
+/*
+	Convert imr_obj_type to string for printing purposes 
+	@param t - imr_obj_type to convert 
+	@return String representation of imr_obj_type parameter, t 
+*/
+const char *type_to_str(enum imr_obj_type t)
+{
+	switch (t) {
+	case IMR_OBJ_TYPE_VERDICT: return "VERDICT: ";
+	case IMR_OBJ_TYPE_IMMEDIATE: return "IMM: ";
+	case IMR_OBJ_TYPE_PAYLOAD: return "PAYLOAD: ";
+	case IMR_OBJ_TYPE_ALU: return "ALU: ";
+	case IMR_OBJ_TYPE_META: return "META: ";
+	case IMR_OBJ_TYPE_BEGIN: return "BEGIN: ";
+	}
+
+	return "unknown";
 }
 
 /*
@@ -232,7 +266,7 @@ int imr_state_print(FILE *fp, struct imr_state *s)
 
 	//Initial print 
     ret = fprintf(fp, "Printing IMR\n");
-	if (ret != 0)
+	if (ret < 0)
 		return ret;
 
 	//Print out each object in state 
@@ -444,6 +478,21 @@ struct imr_object *imr_object_alloc_alu(enum imr_alu_op op, struct imr_object *l
 	return o;
 }
 
+struct imr_object *imr_object_alloc_beginning(enum network_type n, enum transport_type t)
+{
+	struct imr_object *o = imr_object_alloc(IMR_OBJ_TYPE_BEGIN);
+
+	if (!o)
+		return NULL;
+
+	o->beginning.network_layer = n;
+	o->beginning.transport_layer = t;
+
+	o->len = sizeof(n) + sizeof(t);
+
+	return o;
+}
+
 /*
 	Free the imr_object 
 	@param o - imr_object to free 
@@ -466,6 +515,7 @@ void imr_object_free(struct imr_object *o)
 	case IMR_OBJ_TYPE_IMMEDIATE:
 	case IMR_OBJ_TYPE_PAYLOAD:
 	case IMR_OBJ_TYPE_META:
+	case IMR_OBJ_TYPE_BEGIN:
 		break;
 	case IMR_OBJ_TYPE_ALU:
 		//Free each ALU object 

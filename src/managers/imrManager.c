@@ -210,10 +210,16 @@ static int imr_jit_obj_alu(struct bpf_prog *bprog,
 	@param bprog - bpf_prog to add jitted items to 
 	@param state - imr_state to use for determing layer for now 
 */
-static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_state *state) {
+static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_object *object) {
 	int ret = 0;
+	if (object->type != IMR_OBJ_TYPE_BEGIN) {
+		fprintf(stderr, "Not right object type for rule beginning %s\n", type_to_str(object->type));
+		return -1;
+	}
 	//Network Layer
-	switch(state->network_layer){
+	switch(object->beginning.network_layer){
+		case NO_NETWORK:
+			break;
 		case NETWORK_IP4: //Ipv4
 			//Ensure it's an ipv4 packet
 			EMIT(bprog, BPF_MOV64_REG(BPF_REG_1, BPF_REG_2));
@@ -235,7 +241,9 @@ static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_state *state) {
 	}
 
 	//Transport layer 
-	switch(state->transport_layer) {
+	switch(object->beginning.transport_layer) {
+		case NO_TRANSPORT:
+			break;
 		case TRANSPORT_TCP: //TCP
 			//Ensure it's a tcp packet and pass if not
 			EMIT(bprog, BPF_MOV64_REG(BPF_REG_1, BPF_REG_2));
@@ -274,10 +282,12 @@ static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_state *state) {
 	@param i - index of objects to convert 
 	@return Number of rules added 
 */
-static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int i)
+static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int start)
 {
 	//Variable initialization 
-	unsigned int start, end, count, len_cur, ret;
+	unsigned int i, end, len_cur;
+	int count = 0;
+	int ret;
 
 	//Get number of objects 
 	end = state->num_objects;
@@ -291,19 +301,16 @@ static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int i)
 	//Current length of the bprog
 	len_cur = bprog->len_cur;
 
-	//Beginning of imr_rule
-	ret = imr_jit_rule_begin(bprog, state);
-	if (ret != 0) {
-		fprintf(stderr, "Failed to JIT rule begin");
+	//Beginning of imr_rule - needs an imr_rule beginning
+	ret = imr_jit_rule_begin(bprog, state->objects[start]);
+	if (ret < 0) {
+		fprintf(stderr, "Failed to JIT rule begin\n");
 		return ret;
 	}
-
-	//Start at the objects that are part of the rule 
-	start = i;
-	count = 0;
+	count++; //Increase count for rule beginning
 
 	//Loop through objects and jit each object in the rule 
-	for (i = start; start < end; i++) {
+	for (i = start+1; i < end; i++) {
 		//Jit object 
 		ret = imr_jit_object(bprog, state->objects[i]);
 
@@ -348,6 +355,7 @@ static int imr_jit_prologue(struct bpf_prog *bprog, struct imr_state *state)
 	{
 		//XDP layer 
 		case BPF_PROG_TYPE_XDP:
+			state->link_layer = LINK_ETHERNET;
 			ret = xdp_imr_jit_prologue(bprog, state);
 			break;
 		//HERE: sk_buff imr_reload_skb_data
@@ -481,6 +489,7 @@ int imr_do_bpf(struct imr_state *s)
 
 			//If jit failed, return accordingly
 			if (bpf_insn < 0) {
+				fprintf(stderr, "rule jit failed\n");
 				ret = bpf_insn; 
 				break;
 			}
@@ -496,7 +505,7 @@ int imr_do_bpf(struct imr_state *s)
 		} while (i < s->num_objects);
 
 		//Error generating program
-		if (ret != 0) {
+		if (ret < 0) {
 			fprintf(stderr, "Error generating bpf program\n");
 			return ret;
 		}
