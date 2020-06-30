@@ -25,6 +25,11 @@ enum imr_obj_type {
 	IMR_OBJ_TYPE_BEGIN,
 };
 
+enum imr_rule_type {
+	IMR_ALU_EQ_IMM32 = 0,
+	IMR_DROP_ALL = 1
+};
+
 /* imr registers to allow for ease in switching to bpf registers */
 enum imr_reg_num {
 	IMR_REG_0 = 0,
@@ -130,6 +135,7 @@ struct imr_state {
 	uint16_t	            num_objects;     //Number of objects 
 	uint8_t		            regcount;        //Register count 
 	enum link_type          link_layer;      //only ethernet for now 
+	enum imr_verdict		verdict;		 //Verdict to use
 
 	struct imr_object *registers[IMR_REG_COUNT];
 

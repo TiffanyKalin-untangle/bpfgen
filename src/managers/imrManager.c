@@ -424,6 +424,7 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int 
 {
 	//Variable definition 
 	struct imr_state *state; 
+	int i, j;
 
 	//If bpf_settings is not array, then configuration file is malformed 
 	if (!json_is_array(bpf_settings))
@@ -440,17 +441,138 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int 
 	//If running the bootstrap, fill_imr state with the test_to_run
 	if (run_bootstrap) {
 		int ret = fill_imr(state, test_to_run);
-		if (ret < 0)
+		if (ret < 0) {
+			imr_state_free(state);
 			return NULL;
-	} //else { //If not running bootstrap, fill the ruleset properly
+		}
+	} else { //If not running bootstrap, fill the ruleset properly
+		bool err = false;
+		for (i = 0; i < json_array_size(bpf_settings); i++) {
+			if (err)
+				break;
+			json_t *chain, *rules;
 
-	//}
+			chain = json_array_get(bpf_settings, i);
+			if (!json_is_object(chain)) {
+				err = true;
+				break;
+			}
+
+			rules = json_object_get(chain, "rules");
+			if (!json_is_array(rules)) {
+				err = true;
+				break;
+			}
+
+			for (j = 0; j < json_array_size(rules); j++) {
+				if (err)
+					break;
+				json_t *rule, *rule_type_val, *conditions, *network_layer_val, \
+						*transport_layer_val, *payload_val, *imm32_val, *verdict_val;
+				json_int_t rule_type, network_layer, transport_layer, payload, imm32, verdict;
+
+				rule = json_array_get(rules, j);
+				if (!json_is_object(rule)) {
+					err = true;
+					break;
+				}
+
+				rule_type_val = json_object_get(rule, "type");
+				if (!json_is_integer(rule_type_val)) {
+					err = true;
+					break;
+				}
+				rule_type = json_integer_value(rule_type_val);
+
+				switch(rule_type) {
+					case IMR_ALU_EQ_IMM32:
+						
+						conditions = json_object_get(rule, "conditions");
+						if (!json_is_object(conditions)) {
+							err = true;
+							break;
+						}
+
+						network_layer_val = json_object_get(conditions, "network_layer");
+						if (!json_is_integer(network_layer_val)) {
+							err = true;
+							break;
+						}
+						network_layer = json_integer_value(network_layer_val);
+
+						transport_layer_val = json_object_get(conditions, "transport_layer");
+						if (!json_is_integer(transport_layer_val)) {
+							err = true;
+							break;
+						}
+						transport_layer = json_integer_value(transport_layer_val);
+
+						payload_val = json_object_get(conditions, "payload");
+						if (!json_is_integer(payload_val)) {
+							err = true;
+							break;
+						}		
+						payload = json_integer_value(payload_val);	
+
+						imm32_val = json_object_get(conditions, "immediate");
+						if (!json_is_integer(imm32_val)) {
+							err = true;
+							break;
+						}
+						imm32 = json_integer_value(imm32_val);
+
+						verdict_val = json_object_get(rule, "action");
+						if (!json_is_integer(verdict_val)) {
+							err = true;
+							break;
+						}
+						verdict = json_integer_value(verdict_val);
+
+						struct imr_object *begin = imr_object_alloc_beginning(network_layer, transport_layer);
+						struct imr_object *payload_obj = imr_object_alloc_payload(payload);
+						struct imr_object *imm = imr_object_alloc_imm32(ntohs(imm32));
+						struct imr_object *alu = imr_object_alloc_alu(IMR_ALU_OP_EQ, payload_obj, imm);
+						struct imr_object *verdict_obj = imr_object_alloc_verdict(verdict);
+
+						int ret; 
+						ret = imr_state_add_obj(state, begin);
+						if (ret < 0) {
+							err = true;
+							break;
+						}
+						ret = imr_state_add_obj(state, alu);
+						if (ret < 0) {
+							err = true;
+							break;
+						}
+						ret = imr_state_add_obj(state, verdict_obj);
+						if (ret < 0) {
+							err = true;
+							break;
+						}
+						break;
+					case IMR_DROP_ALL:
+						state->verdict = IMR_VERDICT_DROP;
+						break;
+					default:
+						err = true;
+						break;
+				}
+			}
+		}
+
+		if (err) {
+			imr_state_free(state);
+			return NULL;
+		}
+	}
 
 	//Print out function
 	if (!run_bootstrap) {
 		int ret = imr_state_print(stdout, state);
 		if (ret < 0) {
 			fprintf(stderr, "Print failed\n");
+			imr_state_free(state);
 			return NULL;
 		}
 	}

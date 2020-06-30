@@ -67,9 +67,9 @@ static int bpf_prog_load(const struct bpf_prog *prog)
 	attr.license    = (uint64_t)("GPL");
 
 	//Set up logging for BPF 
-	log = malloc(8192);
+	log = malloc(16384);
 	attr.log_buf    = (uint64_t)log;
-	attr.log_size   = 8192;
+	attr.log_size   = 16384;
 	attr.log_level  = 1;
 
 	//Call the bpf function to call the bpf syscall 

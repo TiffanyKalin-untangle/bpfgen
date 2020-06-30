@@ -14,6 +14,8 @@
 #include <linux/filter.h>
 #include <linux/if_ether.h>
 
+#include <arpa/inet.h>
+
 #include "../bpfload.h"
 #include "../imr.h"
 #include "../common.h"

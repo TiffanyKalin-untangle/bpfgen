@@ -59,8 +59,8 @@ static const char *verdict_to_str(enum imr_verdict v)
 static const char *payload_base_to_str(enum imr_payload_base p)
 {
 	switch(p) {
-		case IMR_DEST_PORT: return "destination port";
-		case IMR_SRC_PORT:  return "source port";
+		case IMR_DEST_PORT: return "DESTINATION_PORT";
+		case IMR_SRC_PORT:  return "SOURCE_PORT";
 	}
 
 	return "invalid";
