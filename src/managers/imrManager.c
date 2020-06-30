@@ -417,10 +417,11 @@ json_t *read_bpf_file(void) {
 	@param bpf_settings - The bpf_settings
 	@param run_bootstrap - if bootstrap tests are being run
 	@param test_to_run - which bootstrap test to run 
+	@param debug - TODO
 	@return The imr_state that represents a structure of the rules 
 			so json doesn't have to be reparsed
 */
-struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int test_to_run)
+struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int test_to_run, bool debug)
 {
 	//Variable definition 
 	struct imr_state *state; 
@@ -568,7 +569,7 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int 
 	}
 
 	//Print out function
-	if (!run_bootstrap) {
+	if (debug) {
 		int ret = imr_state_print(stdout, state);
 		if (ret < 0) {
 			fprintf(stderr, "Print failed\n");
