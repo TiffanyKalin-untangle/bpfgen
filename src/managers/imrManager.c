@@ -23,6 +23,23 @@ static int imr_jit_verdict(struct bpf_prog *bprog, int verdict)
 	return 0;
 }
 
+static int imr_jit_end_verdict(struct bpf_prog *bprog, int verdict) 
+{
+	//Switch the hook type and get what the BPF verdict will be
+	//based on the type 
+	switch (bprog->type) {
+	case BPF_PROG_TYPE_XDP: 
+		verdict = xdp_imr_jit_obj_verdict(verdict);
+		break;
+	default:
+		fprintf(stderr, "Unsupported type for IMR_VERDICT");
+		exit(EXIT_FAILURE);
+	}
+
+	//JIT the verdict 
+	return imr_jit_verdict(bprog, verdict);
+}
+
 /*
 	JIT an IMR object of type verdict to BPF
 	@param bprog - bpf program to add to
@@ -586,7 +603,7 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int 
 	@param s - imr_state to translate to bpf 
 	@return Return code from all the translation 
 */
-int imr_do_bpf(struct imr_state *s)
+int imr_do_bpf(struct imr_state *s, bool debug)
 {
 	//Variable init 
     struct bpf_prog bprog;
@@ -597,6 +614,12 @@ int imr_do_bpf(struct imr_state *s)
     if (ret < 0) {
     	return ret;
 	}
+
+	//Verdict from state
+	bprog.verdict = s->verdict;
+
+	//Debug for bprog
+	bprog.debug = debug;
 
 	//Create bpf proglogue for bpf program 
 	ret = imr_jit_prologue(&bprog, s);
@@ -635,7 +658,7 @@ int imr_do_bpf(struct imr_state *s)
 	}
 
 	//Add a bpf verdict and fail if verdict failed
-	ret = imr_jit_verdict(&bprog, bprog.verdict);
+	ret = imr_jit_end_verdict(&bprog, bprog.verdict);
 	if (ret < 0)
 		return ret;
 

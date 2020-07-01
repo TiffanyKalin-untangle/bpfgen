@@ -284,7 +284,14 @@ int imr_state_print(FILE *fp, struct imr_state *s)
 */
 struct imr_state *imr_state_alloc(void)
 {
-    return calloc(1, sizeof(struct imr_state));
+    struct imr_state *s = calloc(1, sizeof(struct imr_state));
+
+	if (!s)
+		return NULL;
+
+	s->verdict = IMR_VERDICT_PASS; //Default 
+
+	return s;
 }
 
 /*
