@@ -385,6 +385,131 @@ static int imr_jit_prologue(struct bpf_prog *bprog, struct imr_state *state)
 	return ret;
 }
 
+static void print_imr_read_ruleset_error(int ret) {
+	switch(ret) {
+		case -1:
+			fprintf(stderr, "JSON is malformed\n");
+			break;
+		case -2:
+			fprintf(stderr, "Error creating a imr_object\n");
+			break;
+		case -3: 
+			fprintf(stderr, "Error adding a valid imr_object to an imr_state\n");
+			break;
+		case -4:
+			fprintf(stderr, "Unknown type of rule\n");
+			break;
+		default:
+			fprintf(stderr, "Error");
+			break;
+	}
+}
+
+static int imr_read_ruleset_alu_eq_imm32(const json_t *rule, struct imr_state *state) {
+	json_t *conditions, *network_layer_val, *transport_layer_val, \
+	       *payload_val, *imm32_val, *verdict_val;
+	json_int_t network_layer, transport_layer, payload, imm32, verdict;
+	
+	conditions = json_object_get(rule, "conditions");
+	if (!json_is_object(conditions))
+		return -1;
+
+	network_layer_val = json_object_get(conditions, "network_layer");
+	if (!json_is_integer(network_layer_val)) 
+		return -1;
+	network_layer = json_integer_value(network_layer_val);
+
+	transport_layer_val = json_object_get(conditions, "transport_layer");
+	if (!json_is_integer(transport_layer_val)) 
+		return -1;
+	transport_layer = json_integer_value(transport_layer_val);
+
+	payload_val = json_object_get(conditions, "payload");
+	if (!json_is_integer(payload_val)) 
+		return -1;
+	payload = json_integer_value(payload_val);	
+
+	imm32_val = json_object_get(conditions, "immediate");
+	if (!json_is_integer(imm32_val)) 
+		return -1;
+	imm32 = json_integer_value(imm32_val);
+
+	verdict_val = json_object_get(rule, "action");
+	if (!json_is_integer(verdict_val)) 
+		return -1;
+	verdict = json_integer_value(verdict_val);
+
+	struct imr_object *begin = imr_object_alloc_beginning(network_layer, transport_layer);
+	if (!begin)
+		return -2;
+	struct imr_object *payload_obj = imr_object_alloc_payload(payload);
+	if (!payload_obj)
+		return -2;
+	struct imr_object *imm = imr_object_alloc_imm32(ntohs(imm32));
+	if (!imm)
+		return -2;
+	struct imr_object *alu = imr_object_alloc_alu(IMR_ALU_OP_EQ, payload_obj, imm);
+	if (!alu)
+		return -2;
+	struct imr_object *verdict_obj = imr_object_alloc_verdict(verdict);
+	if (!verdict_obj)
+		return -2;
+
+	int ret; 
+	ret = imr_state_add_obj(state, begin);
+	if (ret < 0) 
+		return -3;
+	ret = imr_state_add_obj(state, alu);
+	if (ret < 0) 
+		return -3;
+	ret = imr_state_add_obj(state, verdict_obj);
+	if (ret < 0) 
+		return -3;
+
+	return 0;
+}
+
+static int imr_read_ruleset_rules (const json_t *chain, struct imr_state *state) {
+	json_t *rules;
+	int i;
+	int ret = 0;
+
+	rules = json_object_get(chain, "rules");
+	if (!json_is_array(rules))
+		return -1;
+
+	for (i = 0; i < json_array_size(rules); i++) {
+		if (ret < 0)
+			break;
+		json_t *rule, *rule_type_val;;
+		json_int_t rule_type;
+
+		rule = json_array_get(rules, i);
+		if (!json_is_object(rule)) 
+			return -1;
+
+		rule_type_val = json_object_get(rule, "type");
+		if (!json_is_integer(rule_type_val)) 
+			return -1;
+
+		rule_type = json_integer_value(rule_type_val);
+
+		switch(rule_type) {
+			case IMR_ALU_EQ_IMM32:
+				ret = imr_read_ruleset_alu_eq_imm32(rule, state);
+				break;
+			case IMR_DROP_ALL:
+				state->verdict = IMR_VERDICT_DROP;
+				break;
+			default:
+				ret = -4;
+				break;
+		}
+	}
+
+	return 0;
+}
+
 /*
 	JIT an imr_object
 	@param bprog - bpf_prog to add to 
@@ -434,7 +559,7 @@ json_t *read_bpf_file(void) {
 	@param bpf_settings - The bpf_settings
 	@param run_bootstrap - if bootstrap tests are being run
 	@param test_to_run - which bootstrap test to run 
-	@param debug - TODO
+	@param debug - bool for if debug information is printed
 	@return The imr_state that represents a structure of the rules 
 			so json doesn't have to be reparsed
 */
@@ -464,122 +589,23 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings, int run_bootstrap, int 
 			return NULL;
 		}
 	} else { //If not running bootstrap, fill the ruleset properly
-		bool err = false;
+		int ret = 0;
 		for (i = 0; i < json_array_size(bpf_settings); i++) {
-			if (err)
+			if (ret < 0)
 				break;
 			json_t *chain, *rules;
 
 			chain = json_array_get(bpf_settings, i);
 			if (!json_is_object(chain)) {
-				err = true;
+				ret = -1;
 				break;
 			}
 
-			rules = json_object_get(chain, "rules");
-			if (!json_is_array(rules)) {
-				err = true;
-				break;
-			}
-
-			for (j = 0; j < json_array_size(rules); j++) {
-				if (err)
-					break;
-				json_t *rule, *rule_type_val, *conditions, *network_layer_val, \
-						*transport_layer_val, *payload_val, *imm32_val, *verdict_val;
-				json_int_t rule_type, network_layer, transport_layer, payload, imm32, verdict;
-
-				rule = json_array_get(rules, j);
-				if (!json_is_object(rule)) {
-					err = true;
-					break;
-				}
-
-				rule_type_val = json_object_get(rule, "type");
-				if (!json_is_integer(rule_type_val)) {
-					err = true;
-					break;
-				}
-				rule_type = json_integer_value(rule_type_val);
-
-				switch(rule_type) {
-					case IMR_ALU_EQ_IMM32:
-						
-						conditions = json_object_get(rule, "conditions");
-						if (!json_is_object(conditions)) {
-							err = true;
-							break;
-						}
-
-						network_layer_val = json_object_get(conditions, "network_layer");
-						if (!json_is_integer(network_layer_val)) {
-							err = true;
-							break;
-						}
-						network_layer = json_integer_value(network_layer_val);
-
-						transport_layer_val = json_object_get(conditions, "transport_layer");
-						if (!json_is_integer(transport_layer_val)) {
-							err = true;
-							break;
-						}
-						transport_layer = json_integer_value(transport_layer_val);
-
-						payload_val = json_object_get(conditions, "payload");
-						if (!json_is_integer(payload_val)) {
-							err = true;
-							break;
-						}		
-						payload = json_integer_value(payload_val);	
-
-						imm32_val = json_object_get(conditions, "immediate");
-						if (!json_is_integer(imm32_val)) {
-							err = true;
-							break;
-						}
-						imm32 = json_integer_value(imm32_val);
-
-						verdict_val = json_object_get(rule, "action");
-						if (!json_is_integer(verdict_val)) {
-							err = true;
-							break;
-						}
-						verdict = json_integer_value(verdict_val);
-
-						struct imr_object *begin = imr_object_alloc_beginning(network_layer, transport_layer);
-						struct imr_object *payload_obj = imr_object_alloc_payload(payload);
-						struct imr_object *imm = imr_object_alloc_imm32(ntohs(imm32));
-						struct imr_object *alu = imr_object_alloc_alu(IMR_ALU_OP_EQ, payload_obj, imm);
-						struct imr_object *verdict_obj = imr_object_alloc_verdict(verdict);
-
-						int ret; 
-						ret = imr_state_add_obj(state, begin);
-						if (ret < 0) {
-							err = true;
-							break;
-						}
-						ret = imr_state_add_obj(state, alu);
-						if (ret < 0) {
-							err = true;
-							break;
-						}
-						ret = imr_state_add_obj(state, verdict_obj);
-						if (ret < 0) {
-							err = true;
-							break;
-						}
-						break;
-					case IMR_DROP_ALL:
-						state->verdict = IMR_VERDICT_DROP;
-						break;
-					default:
-						err = true;
-						break;
-				}
-			}
+			ret = imr_read_ruleset_rules(chain, state);
 		}
 
-		if (err) {
+		if (ret < 0) {
+			print_imr_read_ruleset_error(ret);
 			imr_state_free(state);
 			return NULL;
 		}

@@ -16,7 +16,7 @@ static int seq;
 	Read in the bpf configuration file, translate it to the IMR, and load the IMR BPF program. 
 	@param run_bootstrap - if bootstrap tests should be run, passed to ruleset read 
 	@param test_to_run - if bootstrap tests are run, which test is run. Passed to ruleset read
-	@param debug - TODO
+	@param debug - bool for if debug information is on
 	@return The return code after doing translation to IMR and loading the BPF program
 */
 static int sdwan2bpf(int run_bootstrap, int test_to_run, bool debug)
