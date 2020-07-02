@@ -1,38 +1,53 @@
 # Function to run the bpfgen executable and check output
 run_test () {
 	BPFGEN=bpfgen
-	if [ "${2}" = true ] 
+	#if running on ubuntu, call the relative path
+
+	#print information
+	if [ "${2}" = true ]
 	then
-		BPFGEN=../bpfgen	
+		BPFGEN="${BPFGEN}"' -d'
 	fi
-	OUTPUT=$(${BPFGEN} -t $1)
-	#If bpfgen returned 0
+
+	#sync-settings
+	cp /usr/bin/tests_json/test_$1.json /etc/config/settings.json
+	SYNC=$(sync-settings)
+
 	if [ $? -eq 0 ]
 	then
-		#Output from bpfgen should only have 'Running bootstrap'
-		RIGHT_OUTPUT="Running bootstrap" 
-		if [[ "${OUTPUT}" == "${RIGHT_OUTPUT}" ]]
+		OUTPUT=$(${BPFGEN})
+		#If bpfgen returned 0
+		if [ $? -eq 0 ]
 		then
-			#Test that generated bpf code is correct 
-			TAG=`bpftool p | grep xdp | awk '{split($0,a,":"); print a[1]}'` #Get bpf tag 
-			echo `bpftool p d x i $TAG` > temp # Put output of bpftool into temp 
-			DIFF=`diff temp /usr/bin/tests/test_$1` #Ensure generated bpfcode is expected 
-			if [ $? -eq 0 ]
+			#Output from bpfgen should be empty
+			if [[ -z "${OUTPUT}" ]]
 			then
-				return 0
+				#Test that generated bpf code is correct 
+				TAG=`bpftool p | grep xdp | awk '{split($0,a,":"); print a[1]}'` #Get bpf tag 
+				echo `bpftool p d x i $TAG` > temp # Put output of bpftool into temp 
+				DIFF=`diff temp /usr/bin/tests/test_$1` #Ensure generated bpfcode is expected 
+				if [ $? -eq 0 ]
+				then
+					return 0
+				fi	
+								
 			fi	
-							
-		fi	
+		fi
 	fi
 
 	#Return 1 if failed 
 	return 1
 }
-UBUNTU=false
-while getopts "u" arg; do
+
+#if running on ubuntu, have an argument and set variable accordingly
+DEBUG=false
+while getopts "ud" arg; do
 	case $arg in 
 		u) 
-			UBUNTU=true
+			cp ../bpfgen /usr/bin
+			;;
+		d)
+			DEBUG=true
 			;;
 	esac
 done
@@ -46,10 +61,13 @@ NC='\033[0m'
 
 echo "RESULTS:"
 
+#stash old settings.json 
+cp /etc/config/settings.json /settings.json.old
+
 # Run all tests 
-for i in 1 2
+for i in 1 2 3
 do
-	run_test $i $UBUNTU
+	run_test $i $DEBUG
 	#If return code is 0, then test passed
 	if [ $? -eq 0 ] 
 	then
@@ -60,10 +78,10 @@ do
 done
 
 #Remove temp file 
-if [ -e temp ]
-then 
-	rm temp
-fi
+#if [ -e temp ]
+#then 
+#	rm temp
+#fi
 
 #Remove XDP programs
 IP=`ip a | grep xdp | awk '{split($0,a,":"); print a[2]}'`
@@ -71,3 +89,6 @@ if [ -n "${IP}" ]
 then 
 	ip link set dev ${IP} xdp off
 fi
+
+#Move old settings file back
+mv /settings.json.old /etc/config/settings.json
