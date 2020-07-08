@@ -1,7 +1,7 @@
 #ifndef COMMON_H
 #define COMMON_H
+#include <stdio.h>
 
-static FILE *log_file;
 //EMIT function declared
 #define div_round_up(n, d)      (((n) + (d) - 1) / (d))
 #define ARRAY_SIZE_BPF(x) (sizeof(x) / sizeof(*(x)))

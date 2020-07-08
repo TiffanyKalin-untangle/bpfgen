@@ -17,6 +17,7 @@ typedef __u16 __bitwise __sum16; /* hack */
 #include "bpf_insn.h"
 #include "managers/imrManagerXdp.h"
 
+extern FILE *logger;
 char bpf_log_buf[BPFGEN_LOG_BUF_SIZE];
 /*
 	Placeholder for determining ifindex from name of interface 
@@ -68,14 +69,14 @@ static int bpf_prog_load(const struct bpf_prog *prog)
 	attr.license    = (uint64_t)("GPL");
 
 	//Set up logging for BPF
-	attr.log_buf   = (uint64_t) bpf_log_buf;
+	attr.log_buf   = (uint64_t) &bpf_log_buf;
 	attr.log_size  = BPFGEN_LOG_BUF_SIZE;
 	attr.log_level = 1;
 	
 	//Call the bpf function to call the bpf syscall 
 	ret = bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
 	if (ret < 0) 
-		fprintf(log_file, "bpf errlog: %i - %i - %s - %s\n", ret, errno, strerror(errno), bpf_log_buf);
+		fprintf(logger, "bpf errlog: %i - %i - %s - %s\n", ret, errno, strerror(errno), bpf_log_buf);
 
 	return ret;
 }
@@ -100,7 +101,7 @@ static int bpf_load_fd(struct bpf_prog *bprog)
 			break;
 		//bprog->type is not supported 
 		default:
-			fprintf(log_file, "bprog->type not yet supported\n");
+			fprintf(logger, "bprog->type not yet supported\n");
 			ret = -1;
 			break;
 	}
@@ -194,7 +195,7 @@ int bpf_register_get(const struct bpf_prog *bprog, uint32_t len)
 
 	//determine if not enough registers are in use 
 	if (bprog->regcount < regs_needed) {
-		fprintf(log_file, "not enough registers in use\n");
+		fprintf(logger, "not enough registers in use\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -215,7 +216,7 @@ int bpf_reg_width(unsigned int len)
 	case sizeof(uint32_t): return BPF_W;
 	case sizeof(uint64_t): return BPF_DW;
 	default:
-		fprintf(log_file, "reg size not supported");
+		fprintf(logger, "reg size not supported");
 		exit(EXIT_FAILURE);
 	}
 
@@ -238,7 +239,7 @@ int bpf_register_alloc(struct bpf_prog *bprog, uint32_t len)
 
 	//Determine if out of bpf registers 
 	if (bprog->regcount + regs_needed >= IMR_REG_COUNT) {
-		fprintf(log_file, "out of BPF registers");
+		fprintf(logger, "out of BPF registers");
 		return -1;
 	}
 
@@ -261,7 +262,7 @@ void bpf_register_release(struct bpf_prog *bprog, uint32_t len)
 
 	//Releasing too many 
 	if (bprog->regcount < regs_needed) {
-		fprintf(log_file, "regcount underflow");
+		fprintf(logger, "regcount underflow");
 		exit(EXIT_FAILURE);
 	}
 

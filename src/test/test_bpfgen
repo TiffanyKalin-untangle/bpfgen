@@ -9,9 +9,24 @@ run_test () {
 		BPFGEN="${BPFGEN}"' -d'
 	fi
 
-	#sync-settings
-	cp /usr/bin/tests_json/test_$1.json /etc/config/settings.json
-	SYNC=$(sync-settings)
+	#if not running test with real sync-settings file, set accordingly
+	if [ $1 -gt 0 ]
+	then
+		#Run bootstrap test
+		if [ "${3}" = true ]
+		then
+			BPFGEN="${BPFGEN}"' -t $1'
+		#Run sync-settings test
+		elif [ "${4}" = true ]
+		then
+			#sync-settings
+			cp /usr/bin/tests/tests_sync_settings_json/test_$1.json /etc/config/settings.json
+			SYNC_SETTINGS=$(sync-settings)
+		#Run normal test - copy test.json to bpf.json
+		else
+			cp /usr/bin/tests/tests_bpfgen/test_$1.json /etc/config/bpf.json
+		fi
+	fi
 
 	if [ $? -eq 0 ]
 	then
@@ -25,7 +40,7 @@ run_test () {
 				#Test that generated bpf code is correct 
 				TAG=`bpftool p | grep xdp | awk '{split($0,a,":"); print a[1]}'` #Get bpf tag 
 				echo `bpftool p d x i $TAG` > temp # Put output of bpftool into temp 
-				DIFF=`diff temp /usr/bin/tests/test_$1` #Ensure generated bpfcode is expected 
+				DIFF=`diff temp /usr/bin/tests/tests_expected_bpf_output/test_$1` #Ensure generated bpfcode is expected 
 				if [ $? -eq 0 ]
 				then
 					return 0
@@ -41,13 +56,26 @@ run_test () {
 
 #if running on ubuntu, have an argument and set variable accordingly
 DEBUG=false
-while getopts "ud" arg; do
+BOOTSTRAP=false
+SYNC=false
+while getopts "udbs" arg; do
 	case $arg in 
 		u) 
 			cp ../bpfgen /usr/bin
+			mkdir /usr/bin/tests
+			cp -r tests_bpfgen/ /usr/bin/tests
+			cp -r tests_expected_bpf_output/ /usr/bin/tests
+			cp -r tests_sync_settings_json/ /usr/bin/tests
 			;;
 		d)
 			DEBUG=true
+			;;
+		b)
+			BOOTSTRAP=true
+			echo "Warning: running bootstrap runs within bpfgen which will cause performance deltas in creating rules"
+			;;
+		s)
+			SYNC=true
 			;;
 	esac
 done
@@ -63,11 +91,12 @@ echo "RESULTS:"
 
 #stash old settings.json 
 cp /etc/config/settings.json /settings.json.old
+cp /etc/config/bpf.json /bpf.json.old
 
 # Run all tests 
-for i in 1 2 3
+for i in 0 1 2
 do
-	run_test $i $DEBUG
+	run_test $i $DEBUG $BOOTSTRAP $SYNC
 	#If return code is 0, then test passed
 	if [ $? -eq 0 ] 
 	then
@@ -77,11 +106,15 @@ do
 	fi
 done
 
+#Move old settings file back
+mv /settings.json.old /etc/config/settings.json
+mv /bpf.json.old /etc/config/bpf.json
+
 #Remove temp file 
-#if [ -e temp ]
-#then 
-#	rm temp
-#fi
+if [ -e temp ]
+then 
+	rm temp
+fi
 
 #Remove XDP programs
 IP=`ip a | grep xdp | awk '{split($0,a,":"); print a[2]}'`
@@ -90,5 +123,4 @@ then
 	ip link set dev ${IP} xdp off
 fi
 
-#Move old settings file back
-mv /settings.json.old /etc/config/settings.json
+

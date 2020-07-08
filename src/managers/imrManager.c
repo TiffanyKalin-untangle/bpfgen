@@ -11,6 +11,7 @@ typedef __u16 __bitwise __sum16; /* hack */
 #include <arpa/inet.h>
 #include <linux/tcp.h>
 
+extern FILE *logger;
 /*
 	JIT a verdict to BPF 
 	@param bprog - bpf program to add verdict to 
@@ -39,7 +40,7 @@ static int imr_jit_end_verdict(struct bpf_prog *bprog, int verdict)
 		verdict = xdp_imr_jit_obj_verdict(verdict);
 		break;
 	default:
-		fprintf(log_file, "Unsupported type for IMR_VERDICT");
+		fprintf(logger, "Unsupported type for IMR_VERDICT");
 		exit(EXIT_FAILURE);
 	}
 
@@ -67,12 +68,12 @@ static int imr_jit_obj_verdict(struct bpf_prog *bprog, const struct imr_object *
 		verdict = xdp_imr_jit_obj_verdict(imr_verdict);
 		break;
 	default:
-		fprintf(log_file, "rule %i object %i: Unsupported type for IMR_VERDICT\n", rule_id, object_id);
+		fprintf(logger, "rule %i object %i: Unsupported type for IMR_VERDICT\n", rule_id, object_id);
 		exit(EXIT_FAILURE);
 	}
 
 	if (verdict < 0) {
-		fprintf(log_file, "rule %i, object %i: Failed to get bpf verdict from imr_type\n", rule_id, object_id);
+		fprintf(logger, "rule %i, object %i: Failed to get bpf verdict from imr_type\n", rule_id, object_id);
 		return -1;
 	}
 
@@ -103,7 +104,7 @@ static int imr_jit_obj_immediate(struct bpf_prog *bprog, const struct imr_object
 		break;
 	}
 
-	fprintf(log_file, "rule_id %i, object_id %i: unhandled immediate size\n", rule_id, object_id);
+	fprintf(logger, "rule_id %i, object_id %i: unhandled immediate size\n", rule_id, object_id);
 	return -EINVAL;
 }
 
@@ -121,7 +122,7 @@ static void imr_fixup_jumps(struct bpf_prog *bprog, unsigned int poc_start, int 
 	//Check to make sure the old poc is not greater than current bpf prog length 
 	if (poc_start >= bprog->len_cur)
 	{
-		fprintf(log_file, "rule_id %i: old poc >= current one\n", rule_id);
+		fprintf(logger, "rule_id %i: old poc >= current one\n", rule_id);
 		exit(EXIT_FAILURE);
 	}
 
@@ -168,7 +169,7 @@ static int imr_jit_obj_payload(struct bpf_prog *bprog, const struct imr_object *
 				sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct tcphdr, source)));
 			break;
 		default:
-			fprintf(log_file, "rule_id %i, object_id %i: Payload type not recognized\n", rule_id, object_id);
+			fprintf(logger, "rule_id %i, object_id %i: Payload type not recognized\n", rule_id, object_id);
 			ret = -1;
 			break;
 	}
@@ -205,14 +206,14 @@ static int imr_jit_obj_alu(struct bpf_prog *bprog, const struct imr_object *o, i
 	//Jit the left side 
 	ret = imr_jit_object(bprog, o->alu.left, rule_id, object_id);
 	if (ret < 0) {
-		fprintf(log_file, "rule_id %i, object_id %i: Failed to JIT left side of an alu\n", rule_id, object_id);
+		fprintf(logger, "rule_id %i, object_id %i: Failed to JIT left side of an alu\n", rule_id, object_id);
 		return ret;
 	}
 
 	//Get the regsiter for the left side 
 	regl = bpf_register_get(bprog, o->len);
 	if (regl < 0) {
-		fprintf(log_file, "rule_id %i, object_id %i: Failed to get register for left side of an alu object\n", rule_id, object_id);
+		fprintf(logger, "rule_id %i, object_id %i: Failed to get register for left side of an alu object\n", rule_id, object_id);
 		return -EINVAL;
 	}
 
@@ -231,7 +232,7 @@ static int imr_jit_obj_alu(struct bpf_prog *bprog, const struct imr_object *o, i
 	}
 
 	//Return -1 as operation is not supported 
-	fprintf(log_file, "rule_id %i, object_id %i: Operation not supported for alu object\n", rule_id, object_id);
+	fprintf(logger, "rule_id %i, object_id %i: Operation not supported for alu object\n", rule_id, object_id);
 	return -1;
 }
 
@@ -244,7 +245,7 @@ static int imr_jit_obj_alu(struct bpf_prog *bprog, const struct imr_object *o, i
 static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_object *object, int rule_id) {
 	int ret = 0;
 	if (object->type != IMR_OBJ_TYPE_BEGIN) {
-		fprintf(log_file, "rule_id %i: Not right object type for rule beginning %s\n", rule_id, type_to_str(object->type));
+		fprintf(logger, "rule_id %i: Not right object type for rule beginning %s\n", rule_id, type_to_str(object->type));
 		return -1;
 	}
 	//Network Layer
@@ -259,7 +260,7 @@ static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_object *object,
 			EMIT(bprog, BPF_JMP_REG(BPF_JLE, BPF_REG_1, BPF_REG_3, 2));
 			break;
 		default:
-			fprintf(log_file, "rule_id %i: Unsupported network layer\n", rule_id);
+			fprintf(logger, "rule_id %i: Unsupported network layer\n", rule_id);
 			ret = -1;
 			break;
 	}
@@ -267,7 +268,7 @@ static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_object *object,
 	//Exit if not right network layer
 	ret = imr_jit_verdict(bprog, bprog->verdict);
 	if (ret != 0) {
-		fprintf(log_file, "rule_id %i: Failure to JIT network layer verdict", rule_id);
+		fprintf(logger, "rule_id %i: Failure to JIT network layer verdict", rule_id);
 		return ret;
 	}
 
@@ -284,7 +285,7 @@ static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_object *object,
 			//Exit if not right transport layer
 			ret = imr_jit_verdict(bprog, bprog->verdict);
 			if (ret != 0) {
-				fprintf(log_file, "rule_id %i: Failure to JIT transport layer verdict 1", rule_id);
+				fprintf(logger, "rule_id %i: Failure to JIT transport layer verdict 1", rule_id);
 				return ret;
 			}
 			EMIT(bprog, BPF_LDX_MEM(BPF_B, BPF_REG_1, BPF_REG_2, sizeof(struct ethhdr) + offsetof(struct iphdr, protocol)));
@@ -292,12 +293,12 @@ static int imr_jit_rule_begin(struct bpf_prog *bprog, struct imr_object *object,
 			EMIT(bprog, BPF_JMP_IMM(BPF_JEQ, BPF_REG_1, IPPROTO_TCP, 2));
 			ret = imr_jit_verdict(bprog, bprog->verdict);
 			if (ret != 0) {
-				fprintf(log_file, "rule_id %i: Failure to JIT transport layer verdict 2", rule_id);
+				fprintf(logger, "rule_id %i: Failure to JIT transport layer verdict 2", rule_id);
 				return ret;
 			}
 			break;
 		default:
-			fprintf(log_file, "rule_id %i: Unsupported transport layer", rule_id);
+			fprintf(logger, "rule_id %i: Unsupported transport layer", rule_id);
 			ret = -1;
 			break;
 	}
@@ -327,7 +328,7 @@ static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int sta
 
 	//Incomplete IMR rule check 
 	if (i >= end) {
-		fprintf(log_file, "rule %i: Incomplete IMR Rule\n", rule_start);
+		fprintf(logger, "rule %i: Incomplete IMR Rule\n", rule_start);
 		return -EINVAL;
 	}
 
@@ -337,7 +338,7 @@ static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int sta
 	//Beginning of imr_rule - needs an imr_rule beginning
 	ret = imr_jit_rule_begin(bprog, state->objects[start], rule_start);
 	if (ret < 0) {
-		fprintf(log_file, "rule %i: Failed to JIT rule begin\n", rule_start);
+		fprintf(logger, "rule %i: Failed to JIT rule begin\n", rule_start);
 		return ret;
 	}
 	count++; //Increase count for rule beginning
@@ -349,7 +350,7 @@ static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int sta
 
 		//Jitting failed
 		if (ret < 0) {
-			fprintf(log_file, "rule_id %i, object_id %i: failed to JIT object type %d\n", rule_start, i, state->objects[i]->type);
+			fprintf(logger, "rule_id %i, object_id %i: failed to JIT object type %d\n", rule_start, i, state->objects[i]->type);
 			return ret;
 		}
 
@@ -363,7 +364,7 @@ static int imr_jit_rule(struct bpf_prog *bprog, struct imr_state *state, int sta
 
 	//malformed - no verdict
 	if (i == end) {
-		fprintf(log_file, "rule_id %i: no verdict, start %d end %d\n", rule_start, start, end);
+		fprintf(logger, "rule_id %i: no verdict, start %d end %d\n", rule_start, start, end);
 		exit(EXIT_FAILURE);
 	}
 
@@ -451,42 +452,42 @@ static const char *chain_failure_to_str(enum imr_read_ruleset_chain_failure f) {
 static void print_imr_read_ruleset_error(int ret, struct imr_read_ruleset_tracker *tracker) {
 	switch(ret) {
 		case -1:
-			fprintf(log_file, "Chain Id %i: ", tracker->chain_id);
+			fprintf(logger, "Chain Id %i: ", tracker->chain_id);
 			if (tracker->rule_id > -1) {
-				fprintf(log_file, "Rule Id %i: ", tracker->rule_id);
+				fprintf(logger, "Rule Id %i: ", tracker->rule_id);
 				if (tracker->condition_id > -1) {
-					fprintf(log_file, "Condition Id %i: ", tracker->condition_id);
-					fprintf(log_file, "JSON is malformed: ");
-					fprintf(log_file, "%s", condition_failure_to_str(tracker->condition_failure));
+					fprintf(logger, "Condition Id %i: ", tracker->condition_id);
+					fprintf(logger, "JSON is malformed: ");
+					fprintf(logger, "%s", condition_failure_to_str(tracker->condition_failure));
 				}
 				else {
-					fprintf(log_file, "JSON is malformed: ");
-					fprintf(log_file, "%s", rule_failure_to_str(tracker->rule_failure));
+					fprintf(logger, "JSON is malformed: ");
+					fprintf(logger, "%s", rule_failure_to_str(tracker->rule_failure));
 				}
 			}
 			else {
-				fprintf(log_file, "JSON is malformed: ");
-				fprintf(log_file, "%s", chain_failure_to_str(tracker->chain_failure));
+				fprintf(logger, "JSON is malformed: ");
+				fprintf(logger, "%s", chain_failure_to_str(tracker->chain_failure));
 			}
-			fprintf(log_file, "\n");
+			fprintf(logger, "\n");
 			break;
 		case -2:
 			//Will have rule and chain
-			fprintf(log_file, "Chain Id %i: Rule Id %i: ", tracker->chain_id, tracker->rule_id);
-			fprintf(log_file, "Error creating a imr_object: ");
-			fprintf(log_file, "Type: %s\n", type_to_str(tracker->imr_failure));
+			fprintf(logger, "Chain Id %i: Rule Id %i: ", tracker->chain_id, tracker->rule_id);
+			fprintf(logger, "Error creating a imr_object: ");
+			fprintf(logger, "Type: %s\n", type_to_str(tracker->imr_failure));
 			break;
 		case -3: 
 			//Will have rule and chain
-			fprintf(log_file, "Chain Id %i: Rule Id %i: ", tracker->chain_id, tracker->rule_id);
-			fprintf(log_file, "Error adding a valid imr_object to an imr_state: ");
-			fprintf(log_file, "Type: %s\n", type_to_str(tracker->imr_failure));
+			fprintf(logger, "Chain Id %i: Rule Id %i: ", tracker->chain_id, tracker->rule_id);
+			fprintf(logger, "Error adding a valid imr_object to an imr_state: ");
+			fprintf(logger, "Type: %s\n", type_to_str(tracker->imr_failure));
 			break;
 		case -4:
-			fprintf(log_file, "Unknown type of rule\n");
+			fprintf(logger, "Unknown type of rule\n");
 			break;
 		default:
-			fprintf(log_file, "Error reading imr ruleset");
+			fprintf(logger, "Error reading imr ruleset");
 			break;
 	}
 }
@@ -713,8 +714,8 @@ json_t *read_bpf_file(void) {
 	bpf_settings = json_load_file(bpf_config_file, 0, &jerr);
 	if (!bpf_settings) 
 	{
-		fprintf(log_file, "jannsson failed to load file: ");
-		fprintf(log_file, "%s", jerr.text);
+		fprintf(logger, "jannsson failed to load file: ");
+		fprintf(logger, "%s\n", jerr.text);
 		return NULL;
 	}
 
@@ -744,21 +745,21 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings,
 	//Allocate tracker
 	tracker = calloc(1, sizeof(struct imr_read_ruleset_tracker));
 	if (!tracker) {
-		fprintf(log_file, "error: could not create ruleset_tracker\n");
+		fprintf(logger, "error: could not create ruleset_tracker\n");
 		return NULL;
 	}
 
 	//If bpf_settings is not array, then configuration file is malformed 
 	if (!json_is_array(bpf_settings))
 	{
-		fprintf(log_file, "error: root of bpf_settings is not an array\n");
+		fprintf(logger, "error: root of bpf_settings is not an array\n");
 		return NULL;
 	}
 
 	//Allocate the imr state 
 	state = imr_state_alloc();
 	if (!state) {
-		fprintf(log_file, "error: Could not create a new imr state\n");
+		fprintf(logger, "error: Could not create a new imr state\n");
 		return NULL;
 	}
 
@@ -766,7 +767,7 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings,
 	if (run_bootstrap) {
 		int ret = fill_imr(state, test_to_run);
 		if (ret < 0) {
-			fprintf(log_file, "error: Bootstrap failed to fill at test %i", test_to_run);
+			fprintf(logger, "error: Bootstrap failed to fill at test %i", test_to_run);
 			imr_state_free(state);
 			return NULL;
 		}
@@ -809,9 +810,9 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings,
 
 	//Print out function only if debug is passed
 	if (debug) {
-		int ret = imr_state_print(stdout, state);
+		int ret = imr_state_print(logger, state);
 		if (ret < 0) {
-			fprintf(log_file, "error: Print failed\n");
+			fprintf(logger, "error: Print failed\n");
 			imr_state_free(state);
 			return NULL;
 		}
@@ -836,7 +837,7 @@ int imr_do_bpf(struct imr_state *s, bool debug)
 	//Allocate and initialize the bprof program, return if failure  
     ret = bpfprog_init(&bprog);
     if (ret < 0) {
-		fprintf(log_file, "error: Failed to create bpf program\n");
+		fprintf(logger, "error: Failed to create bpf program\n");
     	return ret;
 	}
 
@@ -849,7 +850,7 @@ int imr_do_bpf(struct imr_state *s, bool debug)
 	//Create bpf proglogue for bpf program 
 	ret = imr_jit_prologue(&bprog, s);
 	if (ret < 0) {
-		fprintf(log_file, "error: Failed to create prologue for bpf program\n");
+		fprintf(logger, "error: Failed to create prologue for bpf program\n");
 		return ret;
 	}
 
@@ -862,7 +863,7 @@ int imr_do_bpf(struct imr_state *s, bool debug)
 
 			//If jit failed, return accordingly
 			if (bpf_insn < 0) {
-				fprintf(log_file, "rule_id %i: rule jit failed\n", i);
+				fprintf(logger, "rule_id %i: rule jit failed\n", i);
 				ret = bpf_insn; 
 				break;
 			}
@@ -870,7 +871,7 @@ int imr_do_bpf(struct imr_state *s, bool debug)
 			//Needs to have at least 1 for bpf_insn
 			if (bpf_insn == 0) 
 			{
-				fprintf(log_file, "rule_id %i: rule jit yields 0 insn - can't have that\n", i);
+				fprintf(logger, "rule_id %i: rule jit yields 0 insn - can't have that\n", i);
 				ret = -1;
 				break;
 			}
@@ -880,7 +881,7 @@ int imr_do_bpf(struct imr_state *s, bool debug)
 
 		//Error generating program
 		if (ret < 0) {
-			fprintf(log_file, "Error generating bpf program\n");
+			fprintf(logger, "Error generating bpf program\n");
 			return ret;
 		}
 	}
@@ -888,7 +889,7 @@ int imr_do_bpf(struct imr_state *s, bool debug)
 	//Add a bpf verdict and fail if verdict failed
 	ret = imr_jit_end_verdict(&bprog, bprog.verdict);
 	if (ret < 0) {
-		fprintf(log_file, "Error generating bpf program verdict\n");
+		fprintf(logger, "Error generating bpf program verdict\n");
 		return ret;
 	}
 
