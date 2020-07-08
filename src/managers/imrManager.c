@@ -407,7 +407,6 @@ static const char *condition_failure_to_str(enum imr_read_ruleset_conditions_fai
 	
 	switch(f) {
 		case CONDITION_NO_FAILURE: return "No failure";
-		case CONDITION_NOT_OBJECT: return "Condition was not a json object";
 		case NETWORK_LAYER_NOT_INTEGER: return "Network layer was not an integer";
 		case TRANSPORT_LAYER_NOT_INTEGER: return "Transport layer was not an integer";
 		case PAYLOAD_NOT_INTEGER: return "Payload was not an integer";
@@ -427,6 +426,7 @@ static const char *rule_failure_to_str(enum imr_read_ruleset_rule_failure f) {
 		case RULE_NOT_OBJECT: return "Rule not a json object";
 		case RULE_TYPE_NOT_INTEGER: return "Rule type was not an integer";
 		case RULE_IMR_FAILURE: return "IMR failure on rule";
+		case CONDITION_NOT_OBJECT: return "Condition variable not an object";
 	}
 
 	return "unknown";
@@ -508,15 +508,14 @@ static int imr_read_ruleset_alu_eq_imm32(const json_t *rule,
 	json_int_t network_layer, transport_layer, payload, imm32, verdict;
 	
 	//Get the conditions
-	tracker->condition_id = 0;
 	conditions = json_object_get(rule, "conditions");
 	if (!json_is_object(conditions)) {
-		tracker->condition_failure = CONDITION_NOT_OBJECT;
+		tracker->rule_failure = CONDITION_NOT_OBJECT;
 		return -1;
 	}
 
 	//Get the network_layer type. The integer will match the enum
-	tracker->condition_id = 1;
+	tracker->condition_id = 0;
 	network_layer_val = json_object_get(conditions, "network_layer");
 	if (!json_is_integer(network_layer_val)) {
 		tracker->condition_failure = NETWORK_LAYER_NOT_INTEGER;
@@ -525,7 +524,7 @@ static int imr_read_ruleset_alu_eq_imm32(const json_t *rule,
 	network_layer = json_integer_value(network_layer_val);
 
 	//Get the transport_layer type. The integer will match the enum
-	tracker->condition_id = 2;
+	tracker->condition_id = 1;
 	transport_layer_val = json_object_get(conditions, "transport_layer");
 	if (!json_is_integer(transport_layer_val)) {
 		tracker->condition_failure = TRANSPORT_LAYER_NOT_INTEGER;
@@ -534,7 +533,7 @@ static int imr_read_ruleset_alu_eq_imm32(const json_t *rule,
 	transport_layer = json_integer_value(transport_layer_val);
 
 	//Get the payload type. The integer will match the enum
-	tracker->condition_id = 3;
+	tracker->condition_id = 2;
 	payload_val = json_object_get(conditions, "payload");
 	if (!json_is_integer(payload_val)) {
 		tracker->condition_failure = PAYLOAD_NOT_INTEGER;
@@ -543,7 +542,7 @@ static int imr_read_ruleset_alu_eq_imm32(const json_t *rule,
 	payload = json_integer_value(payload_val);	
 
 	//Get the immediate value 
-	tracker->condition_id = 4;
+	tracker->condition_id = 3;
 	imm32_val = json_object_get(conditions, "immediate");
 	if (!json_is_integer(imm32_val)) {
 		tracker->condition_failure = IMMEDIATE_NOT_INTEGER;
@@ -552,7 +551,7 @@ static int imr_read_ruleset_alu_eq_imm32(const json_t *rule,
 	imm32 = json_integer_value(imm32_val);
 
 	//Get the verdict val. The integer will match the enum
-	tracker->condition_id = 5;
+	tracker->condition_id = 4;
 	verdict_val = json_object_get(rule, "action");
 	if (!json_is_integer(verdict_val)) {
 		tracker->condition_failure = ACTION_NOT_INTEGER;
@@ -637,6 +636,10 @@ static int imr_read_ruleset_rules (const json_t *chain,
 
 	//Loop through rules 
 	for (i = 0; i < json_array_size(rules); i++) {
+		//If return code is bad, return 
+		if (ret < 0)
+			break;
+
 		json_t *rule, *rule_type_val;;
 		json_int_t rule_type;
 		tracker->rule_id = i;
@@ -674,7 +677,7 @@ static int imr_read_ruleset_rules (const json_t *chain,
 			break;
 	}
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -775,6 +778,10 @@ struct imr_state *imr_ruleset_read(json_t *bpf_settings,
 		int ret = 0;
 		//Loop through bpf_settings
 		for (i = 0; i < json_array_size(bpf_settings); i++) {
+			//If return code is bad, break
+			if (ret < 0)
+				break;
+
 			json_t *chain, *rules;
 			tracker->chain_id = i;
 			tracker->rule_id = -1;

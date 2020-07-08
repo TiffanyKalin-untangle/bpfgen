@@ -32,7 +32,7 @@ static int sdwan2bpf(int run_bootstrap, int test_to_run, bool debug)
 	bpf_settings = read_bpf_file();
 	if (bpf_settings == NULL) 
 	{
-		return 1;
+		return -1;
 	}
 
 	//Read in ruleset from the file descriptor 
@@ -40,7 +40,7 @@ static int sdwan2bpf(int run_bootstrap, int test_to_run, bool debug)
 	if (state == NULL) {
 		fprintf(logger, "Ruleset read failed\n");
 		json_decref(bpf_settings);
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	//Release json object that is no longer needed
@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
 
 	//Logging
 	if (debug) {
-		logger = fopen("/tmp/bpfgen.log", "a");
+		logger = fopen("/tmp/bpfgen.log", "w");
 		if(!logger) {
 			fprintf(stderr, "Using stdout in debug mode\n");
 			logger = stdout;
@@ -96,15 +96,13 @@ int main(int argc, char *argv[])
 		logger = stdout;
 	}
 
-	
-
 	//Main function to translate and load bpf program
 	int ret; // return code
 	ret = sdwan2bpf(run_bootstrap, test_to_run, debug);
 
-	//free memory
-	/*if (debug) 
-		fclose (logger);*/
+	//free logger memory if in debug mode
+	if (debug) 
+		fclose (logger);
 
 	return ret;
 }
