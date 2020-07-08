@@ -17,6 +17,7 @@ typedef __u16 __bitwise __sum16; /* hack */
 #include "bpf_insn.h"
 #include "managers/imrManagerXdp.h"
 
+char bpf_log_buf[BPFGEN_LOG_BUF_SIZE];
 /*
 	Placeholder for determining ifindex from name of interface 
 	@param ifname - The name of the interface to convert to number
@@ -53,12 +54,12 @@ static int bpf(int cmd, union bpf_attr *attr, unsigned int size)
 	Instantiate the bpf_attr that is passed to the BPF syscall
 	@param prog - bpf_prog object that holds information on the BPF program from the IMR translation
 	@return Return code from calling the bpf function that calls the BPF syscall
+	@param TODO
 */
 static int bpf_prog_load(const struct bpf_prog *prog)
 {
 	//Variable initialization 
 	union bpf_attr attr = {};
-	char *log;
 	int ret;
 
 	attr.prog_type  = prog->type;
@@ -66,19 +67,15 @@ static int bpf_prog_load(const struct bpf_prog *prog)
 	attr.insn_cnt   = prog->len_cur;
 	attr.license    = (uint64_t)("GPL");
 
-	//Set up logging for BPF 
-	log = malloc(16384);
-	attr.log_buf    = (uint64_t)log;
-	attr.log_size   = 16384;
-	attr.log_level  = 1;
-
+	//Set up logging for BPF
+	attr.log_buf   = (uint64_t) bpf_log_buf;
+	attr.log_size  = BPFGEN_LOG_BUF_SIZE;
+	attr.log_level = 1;
+	
 	//Call the bpf function to call the bpf syscall 
 	ret = bpf(BPF_PROG_LOAD, &attr, sizeof(attr));
 	if (ret < 0) 
-		fprintf(/*log_file*/stderr, "bpf errlog: %i - %i - %s - %s\n", ret, errno, strerror(errno), log);
-
-	//Free memory 
-	free(log);
+		fprintf(log_file, "bpf errlog: %i - %i - %s - %s\n", ret, errno, strerror(errno), bpf_log_buf);
 
 	return ret;
 }
@@ -103,6 +100,7 @@ static int bpf_load_fd(struct bpf_prog *bprog)
 			break;
 		//bprog->type is not supported 
 		default:
+			fprintf(log_file, "bprog->type not yet supported\n");
 			ret = -1;
 			break;
 	}
@@ -114,6 +112,7 @@ static int bpf_load_fd(struct bpf_prog *bprog)
 	Load/generate the bpf file and load it into the proper layer 
 	@param bprog - bpf_prog structure which holds the proper information for the bpf program 
 	@return Return code for loading/generating the bpf file and loading it 
+	@param TODO
 */
 int bpfprog_commit(struct bpf_prog *bprog)
 {
@@ -195,7 +194,7 @@ int bpf_register_get(const struct bpf_prog *bprog, uint32_t len)
 
 	//determine if not enough registers are in use 
 	if (bprog->regcount < regs_needed) {
-		fprintf(stderr, "not enough registers in use\n");
+		fprintf(log_file, "not enough registers in use\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -216,7 +215,7 @@ int bpf_reg_width(unsigned int len)
 	case sizeof(uint32_t): return BPF_W;
 	case sizeof(uint64_t): return BPF_DW;
 	default:
-		fprintf(stderr, "reg size not supported");
+		fprintf(log_file, "reg size not supported");
 		exit(EXIT_FAILURE);
 	}
 
@@ -239,7 +238,7 @@ int bpf_register_alloc(struct bpf_prog *bprog, uint32_t len)
 
 	//Determine if out of bpf registers 
 	if (bprog->regcount + regs_needed >= IMR_REG_COUNT) {
-		fprintf(stderr, "out of BPF registers");
+		fprintf(log_file, "out of BPF registers");
 		return -1;
 	}
 
@@ -262,7 +261,7 @@ void bpf_register_release(struct bpf_prog *bprog, uint32_t len)
 
 	//Releasing too many 
 	if (bprog->regcount < regs_needed) {
-		fprintf(stderr, "regcount underflow");
+		fprintf(log_file, "regcount underflow");
 		exit(EXIT_FAILURE);
 	}
 

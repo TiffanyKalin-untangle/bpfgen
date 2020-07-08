@@ -102,21 +102,21 @@ static const char *transport_to_str(enum transport_type t)
 	@param o - imr_object with imm attribute to print 
 	@return Return code from fprints
 */
-static int imr_object_print_imm(FILE *fp, const struct imr_object *o)
+static int imr_object_print_imm(FILE *log_file, const struct imr_object *o)
 {
 	//Initialize printing 
-	int ret = fprintf(fp, "TYPE_IMMEDIATE (");
+	int ret = fprintf(log_file, "TYPE_IMMEDIATE (");
 	if (ret < 0)
 		return ret;
 
 	//Based on object length print out right attribute value
 	switch (o->len) {
 	case sizeof(uint64_t):
-		return fprintf(fp, "0x%16llx)\n", (unsigned long long)o->imm.value64);
+		return fprintf(log_file, "0x%16llx)\n", (unsigned long long)o->imm.value64);
 	case sizeof(uint32_t):
-		return fprintf(fp, "0x%08x)\n", (unsigned int)o->imm.value32);
+		return fprintf(log_file, "0x%08x)\n", (unsigned int)o->imm.value32);
 	default:
-		return fprintf(fp, "0x%llx (?)\n", (unsigned long long)o->imm.value64);
+		return fprintf(log_file, "0x%llx (?)\n", (unsigned long long)o->imm.value64);
 	}
 }
 
@@ -127,7 +127,7 @@ static int imr_object_print_imm(FILE *fp, const struct imr_object *o)
 	@param o - imr_object to print 
 	@return Cumulative return code of all the prints to determine if a failure occured
 */
-static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
+static int imr_object_print(FILE *log_file, int depth, const struct imr_object *o)
 {
 	//Variable init
 	int ret = 0;
@@ -136,12 +136,12 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 
 	//Print out type 
 	for (i = 0; i < depth; i++) {
-		ret = fprintf(fp, "\t");
+		ret = fprintf(log_file, "\t");
 		if (ret < 0)
 			return ret;
 	}
 
-	ret = fprintf(fp, "%s", type_to_str(o->type));
+	ret = fprintf(log_file, "%s", type_to_str(o->type));
 	if (ret < 0)
 		return ret;
 
@@ -149,7 +149,7 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 	switch (o->type) {
 	case IMR_OBJ_TYPE_VERDICT:
 		//Verdict 
-		ret = fprintf(fp, "%s", verdict_to_str(o->verdict.verdict));
+		ret = fprintf(log_file, "%s", verdict_to_str(o->verdict.verdict));
 
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
@@ -158,8 +158,7 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 		break;
 	case IMR_OBJ_TYPE_PAYLOAD:
 		//Payload 
-		ret = fprintf(fp, "%s",
-				payload_base_to_str(o->payload.base));
+		ret = fprintf(log_file, "%s", payload_base_to_str(o->payload.base));
 
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
@@ -168,7 +167,7 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 		break;
 	case IMR_OBJ_TYPE_IMMEDIATE:
 		//Immediate 
-		ret = imr_object_print_imm(fp, o);
+		ret = imr_object_print_imm(log_file, o);
 
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
@@ -179,7 +178,7 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 		//ALU
 		++depth;
 		//Start of print 
-		ret = fprintf(fp, "\n");
+		ret = fprintf(log_file, "\n");
 
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
@@ -187,7 +186,7 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 		total += ret;
 
 		//Print left alu object 
-		ret = imr_object_print(fp, depth, o->alu.left);
+		ret = imr_object_print(log_file, depth, o->alu.left);
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
 			break;
@@ -195,15 +194,15 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 
 		//Print ALU op 
 		for (i = 0; i < depth; i++)
-			fprintf(fp, "\n\t");
-		ret = fprintf(fp , "op: %s \n", alu_op_to_str(o->alu.op));
+			fprintf(log_file, "\n\t");
+		ret = fprintf(log_file, "op: %s \n", alu_op_to_str(o->alu.op));
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
 			break;
 		total += ret;
 
 		//Print ALU right object 
-		ret = imr_object_print(fp, depth, o->alu.right);
+		ret = imr_object_print(log_file, depth, o->alu.right);
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
 			break;
@@ -214,7 +213,7 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 		break;
 	case IMR_OBJ_TYPE_META:
 		//Meta 
-		ret = fprintf(fp , " %s ", meta_to_str(o->meta.key));
+		ret = fprintf(log_file, " %s ", meta_to_str(o->meta.key));
 
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
@@ -222,13 +221,13 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 		total += ret;
 		break;
 	case IMR_OBJ_TYPE_BEGIN:
-		ret = fprintf(fp, "\n\tNETWORK: %s\n", network_to_str(o->beginning.network_layer));
+		ret = fprintf(log_file, "\n\tNETWORK: %s\n", network_to_str(o->beginning.network_layer));
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
 			break;
 		total += ret;
 
-		ret = fprintf(fp, "\tTRANSPORT: %s\n", transport_to_str(o->beginning.transport_layer));
+		ret = fprintf(log_file, "\tTRANSPORT: %s\n", transport_to_str(o->beginning.transport_layer));
 		//Don't add to total if print failed, otherwise add to total
 		if (ret < 0)
 			break;
@@ -236,7 +235,7 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 		break;
 	default:
 		//Failure for missing print support
-		perror("Missing print support");
+		fprintf(log_file, "Missing print support");
 		exit(EXIT_FAILURE);
 		break;
 	}
@@ -252,12 +251,13 @@ static int imr_object_print(FILE *fp, int depth, const struct imr_object *o)
 const char *type_to_str(enum imr_obj_type t)
 {
 	switch (t) {
-	case IMR_OBJ_TYPE_VERDICT: return "VERDICT: ";
-	case IMR_OBJ_TYPE_IMMEDIATE: return "IMM: ";
-	case IMR_OBJ_TYPE_PAYLOAD: return "PAYLOAD: ";
-	case IMR_OBJ_TYPE_ALU: return "ALU: ";
-	case IMR_OBJ_TYPE_META: return "META: ";
-	case IMR_OBJ_TYPE_BEGIN: return "BEGIN: ";
+	case IMR_OBJ_TYPE_NONE: return "NO TYPE ";
+	case IMR_OBJ_TYPE_VERDICT: return "VERDICT ";
+	case IMR_OBJ_TYPE_IMMEDIATE: return "IMM ";
+	case IMR_OBJ_TYPE_PAYLOAD: return "PAYLOAD ";
+	case IMR_OBJ_TYPE_ALU: return "ALU ";
+	case IMR_OBJ_TYPE_META: return "META ";
+	case IMR_OBJ_TYPE_BEGIN: return "BEGIN ";
 	}
 
 	return "unknown";
@@ -269,23 +269,23 @@ const char *type_to_str(enum imr_obj_type t)
 	@param s - imr_state to print 
 	@return Return code of printing
 */
-int imr_state_print(FILE *fp, struct imr_state *s)
+int imr_state_print(FILE *log_file, struct imr_state *s)
 {
 	//Variable init 
 	int i;
 	int ret = 0;
 
 	//Initial print 
-    ret = fprintf(fp, "Printing IMR\n");
+    ret = fprintf(log_file, "Printing IMR\n");
 	if (ret < 0)
 		return ret;
 
 	//Print out each object in state 
 	for (i = 0; i < s->num_objects; i++) {
-		ret = imr_object_print(fp, 0, s->objects[i]);
+		ret = imr_object_print(log_file, 0, s->objects[i]);
 		if (ret < 0)
 			return ret;
-		putc('\n', fp);
+		putc('\n', log_file);
 	}
 
 	return ret;
@@ -311,6 +311,7 @@ struct imr_state *imr_state_alloc(void)
 /*
 	Free an imr_state 
 	@param s - imr_state to free 
+	@param TODO
 */
 void imr_state_free(struct imr_state *s)
 {
@@ -486,7 +487,7 @@ struct imr_object *imr_object_alloc_alu(enum imr_alu_op op, struct imr_object *l
 
 	//Don't set ALU with 0 length ojects 
 	if (l->len == 0 || r->len == 0) {
-		fprintf(stderr, "alu op with 0 op length\n");
+		fprintf(log_file, "alu op with 0 op length\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -532,7 +533,7 @@ void imr_object_free(struct imr_object *o)
 
 	//Avoid double free 
 	if (o->refcnt == 0) {
-		perror("double-free, refcnt already zero");
+		fprintf(log_file, "double-free for an imr_state, refcnt already zero");
 		o->refcnt--;
 	}
 
